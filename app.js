@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (t > 37.5) hasWarning = true;
 
         if (vitals.movement === 'Fall Detected' || vitals.movement === 'No Movement') hasCritical = true;
-        else if (vitals.movement === 'Low movement' || vitals.movement === 'Stationary') hasWarning = true;
+        else if (vitals.movement === 'Low movement' || vitals.movement === 'Stationary' || vitals.movement === 'STILL') hasWarning = true;
 
         const gasVal = typeof vitals.gas === 'number' ? vitals.gas : 0;
         if (gasVal > 2000 || vitals.gas === 'Hazardous') hasCritical = true;
@@ -149,6 +149,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (spo2Val !== null) unit.vitals.spo2 = Math.round(spo2Val);
                     if (tempVal !== null) unit.vitals.temp = parseFloat(tempVal).toFixed(1);
                     if (gasVal !== null) unit.vitals.gas = gasVal; // No rounding to match Arduino precisely
+                    
+                    const movementVal = getVal('movement');
+                    if (movementVal !== null) {
+                        unit.vitals.movement = movementVal === 1 ? 'MOVING' : 'STILL';
+                    }
                     
                     unit.lastUpdated = new Date().toLocaleTimeString();
                     unit.status = calculateUnitStatus(unit.vitals);
@@ -447,11 +452,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Movement
         document.getElementById('detail-movement-main').innerText = unit.vitals.movement.toString().toUpperCase();
-        let movementColor = '#10b981'; // Green
-        if (unit.vitals.movement === 'Fall Detected' || unit.vitals.movement === 'No Movement') movementColor = '#ff2a55';
-        else if (unit.vitals.movement === 'Low movement' || unit.vitals.movement === 'Stationary' || unit.vitals.movement === 'Waiting') movementColor = '#f59e0b';
-        document.getElementById('movement-icon-large').style.color = movementColor;
-        document.getElementById('movement-icon-large').style.filter = `drop-shadow(0 0 10px ${movementColor})`;
+        let movementColor = '#10b981'; // Default Green (Moving/Active)
+        let movementIcon = 'fa-person-walking';
+
+        if (unit.vitals.movement === 'Fall Detected' || unit.vitals.movement === 'No Movement') {
+            movementColor = '#ff2a55';
+            movementIcon = 'fa-person-falling-burst';
+        } else if (unit.vitals.movement === 'STILL' || unit.vitals.movement === 'Stationary' || unit.vitals.movement === 'Waiting' || unit.vitals.movement === 'Low movement') {
+            movementColor = '#f59e0b'; // Amber (Still/Warning)
+            movementIcon = 'fa-person';
+        }
+
+        const mIconEl = document.getElementById('movement-icon-large');
+        mIconEl.className = `fa-solid ${movementIcon}`;
+        mIconEl.style.color = movementColor;
+        mIconEl.style.filter = `drop-shadow(0 0 10px ${movementColor})`;
         document.getElementById('detail-movement-main').style.color = movementColor;
 
         // Gas
