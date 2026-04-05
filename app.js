@@ -7,7 +7,7 @@ const ubidotsConfig = {
         spo2: 'spo2',          // SpO2 variable label
         temp: 'temperature',   // Matches your ESP32 JSON payload
         gas: 'gas',            // Matches your ESP32 JSON payload
-        movement: 'movement',  // Movement status variable label
+        movement: 'metric',    // Changed from 'movement' to 'metric' based on dashboard
         lat: 'latitude',       // GPS Latitude variable label
         lng: 'longitude'       // GPS Longitude variable label
     }
@@ -150,9 +150,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (tempVal !== null) unit.vitals.temp = parseFloat(tempVal).toFixed(1);
                     if (gasVal !== null) unit.vitals.gas = gasVal; // No rounding to match Arduino precisely
                     
-                    const movementVal = getVal('movement');
+                    const movementVal = getVal(ubidotsConfig.variables.movement);
                     if (movementVal !== null) {
-                        unit.vitals.movement = movementVal === 1 ? 'MOVING' : 'STILL';
+                        unit.vitals.movement = parseFloat(movementVal) === 1 ? 'MOVING' : 'STILL';
                     }
                     
                     unit.lastUpdated = new Date().toLocaleTimeString();
