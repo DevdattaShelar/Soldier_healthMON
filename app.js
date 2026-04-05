@@ -148,24 +148,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (hrVal !== null) unit.vitals.hr = Math.round(hrVal);
                     if (spo2Val !== null) unit.vitals.spo2 = Math.round(spo2Val);
                     if (tempVal !== null) unit.vitals.temp = parseFloat(tempVal).toFixed(1);
-                    if (gasVal !== null) unit.vitals.gas = Math.round(gasVal);
+                    if (gasVal !== null) unit.vitals.gas = gasVal; // No rounding to match Arduino precisely
                     
                     unit.lastUpdated = new Date().toLocaleTimeString();
                     unit.status = calculateUnitStatus(unit.vitals);
 
                     console.log(`[Ubidots Live Data] Temp: ${unit.vitals.temp}°C | Gas: ${unit.vitals.gas} | HR: ${unit.vitals.hr} | SpO2: ${unit.vitals.spo2}`);
 
-                    // SMOOTH UI UPDATE
+                    // LIVE UI UPDATE: Automatically refresh the detail panel if viewing Unit 01
                     if (state.selectedUnitId === 'UN-001' && state.activeView === 'unit-detail-view') {
-                        const dHr = document.getElementById('detail-hr');
-                        const dSpo2 = document.getElementById('detail-spo2');
-                        const dTemp = document.getElementById('detail-temp');
-                        const dGas = document.getElementById('detail-gas-main'); // Corrected ID!
-                        
-                        if (dHr) dHr.textContent = unit.vitals.hr;
-                        if (dSpo2) dSpo2.textContent = unit.vitals.spo2;
-                        if (dTemp) dTemp.textContent = unit.vitals.temp;
-                        if (dGas) dGas.textContent = unit.vitals.gas;
+                        refreshUnitDetail(unit);
                     }
 
                     renderDashboard();
@@ -263,11 +255,13 @@ document.addEventListener('DOMContentLoaded', () => {
             item.classList.add('active');
 
             // Switch View
+            state.activeView = targetId; // Track state!
             switchView(targetId);
         });
     });
 
     backBtn.addEventListener('click', () => {
+        state.activeView = 'dashboard-view';
         switchView('dashboard-view');
     });
 
@@ -320,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td class="col-vital ${getHrColorClass(unit.vitals.hr)}">${unit.vitals.hr}</td>
                     <td class="col-vital ${getSpO2ColorClass(unit.vitals.spo2)}">${unit.vitals.spo2}%</td>
                     <td class="col-vital ${getTempColorClass(unit.vitals.temp)}">${unit.vitals.temp}°C</td>
-                    <td class="${unit.vitals.gas === 'Safe air' ? 'green' : 'red'}">${unit.vitals.gas}</td>
+                    <td class="col-vital ${getGasColorClass(unit.vitals.gas)}">${unit.vitals.gas}</td>
                     <td class="${['Fall Detected', 'No Movement'].includes(unit.vitals.movement) ? 'red' : 'green'}">${unit.vitals.movement}</td>
                     <td style="font-size: 0.75rem; color: var(--text-muted);">${unit.lastUpdated}</td>
                     <td><button class="btn btn-outline btn-view action-btn">View</button></td>
@@ -415,8 +409,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Unit Detail View ---
     function openUnitDetail(unit) {
         state.selectedUnitId = unit.id;
+        state.activeView = 'unit-detail-view'; // Track state!
 
         document.getElementById('detail-unit-name').innerText = `${unit.name} (${unit.id})`;
+        
+        // Location (Update once on load to avoid flickering)
+        document.getElementById('detail-lat').innerText = `LAT: ${unit.location.lat} N`;
+        document.getElementById('detail-lng').innerText = `LNG: ${unit.location.lng} E`;
+        document.getElementById('google-map-iframe').src = `https://maps.google.com/maps?q=${unit.location.lat},${unit.location.lng}&z=15&output=embed`;
+        document.getElementById('detail-map-link').href = `https://www.google.com/maps/search/?api=1&query=${unit.location.lat},${unit.location.lng}`;
+
+        refreshUnitDetail(unit);
+
+        // Switch to detail view
+        navItems.forEach(nav => nav.classList.remove('active')); // Deselect sidebar
+        switchView('unit-detail-view');
+    }
+
+    function refreshUnitDetail(unit) {
         document.getElementById('detail-status-badge').innerText = unit.status;
         document.getElementById('detail-status-badge').className = 'status-badge ' + getBadgeClass(unit.status);
 
@@ -436,10 +446,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('bar-temp').style.width = `${tempPct}%`;
 
         // Movement
-        document.getElementById('detail-movement-main').innerText = unit.vitals.movement.toUpperCase();
+        document.getElementById('detail-movement-main').innerText = unit.vitals.movement.toString().toUpperCase();
         let movementColor = '#10b981'; // Green
         if (unit.vitals.movement === 'Fall Detected' || unit.vitals.movement === 'No Movement') movementColor = '#ff2a55';
-        else if (unit.vitals.movement === 'Low movement' || unit.vitals.movement === 'Stationary') movementColor = '#f59e0b';
+        else if (unit.vitals.movement === 'Low movement' || unit.vitals.movement === 'Stationary' || unit.vitals.movement === 'Waiting') movementColor = '#f59e0b';
         document.getElementById('movement-icon-large').style.color = movementColor;
         document.getElementById('movement-icon-large').style.filter = `drop-shadow(0 0 10px ${movementColor})`;
         document.getElementById('detail-movement-main').style.color = movementColor;
@@ -455,16 +465,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('bar-gas').style.width = `${gasPct}%`;
         document.getElementById('bar-gas').style.background = gasColor;
         document.getElementById('bar-gas').style.boxShadow = `0 0 10px ${gasColor}`;
-
-        // Location
-        document.getElementById('detail-lat').innerText = `LAT: ${unit.location.lat} N`;
-        document.getElementById('detail-lng').innerText = `LNG: ${unit.location.lng} E`;
-        document.getElementById('google-map-iframe').src = `https://maps.google.com/maps?q=${unit.location.lat},${unit.location.lng}&z=15&output=embed`;
-        document.getElementById('detail-map-link').href = `https://www.google.com/maps/search/?api=1&query=${unit.location.lat},${unit.location.lng}`;
-
-        // Switch to detail view
-        navItems.forEach(nav => nav.classList.remove('active')); // Deselect sidebar
-        switchView('unit-detail-view');
 
         checkForItemLevelAlerts(unit);
     }
@@ -499,6 +499,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (t > 37.5) return 'yellow';
         return 'green';
     }
+    function getGasColorClass(gas) {
+        if (gas === 'Safe air') return 'green';
+        if (gas === 'Slightly polluted') return 'yellow';
+        if (gas === 'Hazardous') return 'red';
+        const gVal = typeof gas === 'number' ? gas : parseFloat(gas) || 0;
+        if (gVal > 2000) return 'red';
+        if (gVal > 1000) return 'yellow';
+        return 'green';
+    }
     function getBadgeClass(status) {
         if (status === 'normal') return 'bg-green';
         if (status === 'warning') return 'bg-yellow';
@@ -512,6 +521,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Alerts System ---
     function calculateAlerts() {
+        // Disabled per user request: Stop vital alerts from popping up.
+        /*
         if (!state.isAuthenticated) return;
         state.units.forEach(unit => {
             if (unit.status === 'critical') {
@@ -521,6 +532,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (unit.vitals.spo2 < 90) showNotification(`${unit.name}: Low Oxygen Levels!`, 'critical');
             }
         });
+        */
     }
 
     function showNotification(msg, type = 'info') {
@@ -572,7 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateDashboardLiveValues();
                 } else if (state.activeView === 'unit-detail-view' && state.selectedUnitId) {
                     const activeU = state.units.find(u => u.id === state.selectedUnitId);
-                    if (activeU) openUnitDetail(activeU);
+                    if (activeU) refreshUnitDetail(activeU);
                 }
             }
         }, 10000);
@@ -580,7 +592,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fetch Unit 1 Ubidots data every 1 second for "Super Fast" performance
         setInterval(() => {
             fetchUnit1FromUbidots();
-        }, 1000);
+        }, 2000); // 2 second delay as requested
         
         // Initial fetch
         fetchUnit1FromUbidots();
