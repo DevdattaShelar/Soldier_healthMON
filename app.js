@@ -7,7 +7,7 @@ const ubidotsConfig = {
         spo2: 'spo2',          // SpO2 variable label
         temp: 'temperature',   // Matches your ESP32 JSON payload
         gas: 'gas',            // Matches your ESP32 JSON payload
-        movement: 'metric',    // Changed from 'movement' to 'metric' based on dashboard
+        movement: 'motion',    // Actual Ubidots variable label is 'motion'
         lat: 'latitude',       // GPS Latitude variable label
         lng: 'longitude'       // GPS Longitude variable label
     }
@@ -117,12 +117,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Real-Time Ubidots Integration (v2.0 API) ---
     async function fetchUnit1FromUbidots() {
+        // We use v2.0 to get all variables for the device at once
         const url = `https://industrial.api.ubidots.com/api/v2.0/devices/~${ubidotsConfig.deviceLabel}/variables/?token=${ubidotsConfig.token}&_=${Date.now()}`;
 
         try {
             const response = await fetch(url);
+            
             if (!response.ok) {
-                console.error(`[Ubidots] Sync Failed: HTTP ${response.status}`);
+                if (response.status === 403) {
+                    console.error("[Ubidots] 403 Forbidden: Check if your Token or Device Label is correct.");
+                } else if (response.status === 404) {
+                    console.error(`[Ubidots] 404 Not Found: Device "${ubidotsConfig.deviceLabel}" not found.`);
+                } else {
+                    console.error(`[Ubidots] Sync Failed: HTTP ${response.status}`);
+                }
                 return;
             }
 
@@ -130,37 +138,47 @@ document.addEventListener('DOMContentLoaded', () => {
             const variablesArray = data.results || [];
             
             if (variablesArray.length > 0) {
+                // Log all labels once to help user verify configuration
+                const labels = variablesArray.map(v => v.label).join(", ");
+                console.log(`[Ubidots] Connected! Found Labels: [${labels}]`);
+
                 const index = state.units.findIndex(u => u.id === 'UN-001');
                 if (index !== -1) {
                     const unit = state.units[index];
                     
-                    const getVal = (label) => {
-                        const v = variablesArray.find(v => v.label === label);
-                        return (v && v.lastValue && v.lastValue.value !== undefined) ? v.lastValue.value : null;
+                    const getVal = (labelKey) => {
+                        // Check for variable in configuration
+                        const targetLabel = ubidotsConfig.variables[labelKey] || labelKey;
+                        const v = variablesArray.find(v => v.label.toLowerCase() === targetLabel.toLowerCase());
+                        if (v && v.lastValue && v.lastValue.value !== undefined) {
+                            return v.lastValue.value;
+                        }
+                        return null;
                     };
                     
-                    // Decode
-                    const hrVal = getVal('heart-rate');
+                    // Update Vitals
+                    const hrVal = getVal('hr');
                     const spo2Val = getVal('spo2');
-                    const tempVal = getVal('temperature');
+                    const tempVal = getVal('temp');
                     const gasVal = getVal('gas');
+                    const movementVal = getVal('movement');
                     
                     if (hrVal !== null) unit.vitals.hr = Math.round(hrVal);
                     if (spo2Val !== null) unit.vitals.spo2 = Math.round(spo2Val);
                     if (tempVal !== null) unit.vitals.temp = parseFloat(tempVal).toFixed(1);
-                    if (gasVal !== null) unit.vitals.gas = gasVal; // No rounding to match Arduino precisely
+                    if (gasVal !== null) unit.vitals.gas = gasVal;
                     
-                    const movementVal = getVal(ubidotsConfig.variables.movement);
                     if (movementVal !== null) {
-                        unit.vitals.movement = parseFloat(movementVal) === 1 ? 'MOVING' : 'STILL';
+                        // The core request: 1 -> MOVING, 0 -> STILL
+                        unit.vitals.movement = (parseFloat(movementVal) === 1) ? 'MOVING' : 'STILL';
                     }
                     
                     unit.lastUpdated = new Date().toLocaleTimeString();
                     unit.status = calculateUnitStatus(unit.vitals);
 
-                    console.log(`[Ubidots Live Data] Temp: ${unit.vitals.temp}°C | Gas: ${unit.vitals.gas} | HR: ${unit.vitals.hr} | SpO2: ${unit.vitals.spo2}`);
+                    console.log(`[Sync Successful] Unit 01 | Movement: ${unit.vitals.movement} (Raw: ${movementVal}) | Temp: ${unit.vitals.temp}`);
 
-                    // LIVE UI UPDATE: Automatically refresh the detail panel if viewing Unit 01
+                    // LIVE UI UPDATE
                     if (state.selectedUnitId === 'UN-001' && state.activeView === 'unit-detail-view') {
                         refreshUnitDetail(unit);
                     }
@@ -168,9 +186,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderDashboard();
                     calculateAlerts();
                 }
+            } else {
+                console.warn(`[Ubidots] No variables found for device: ${ubidotsConfig.deviceLabel}`);
             }
         } catch (err) {
-            console.error("[Ubidots] Connection Error:", err.message);
+            console.error("[Ubidots] Network Error:", err.message);
         }
     }
     
