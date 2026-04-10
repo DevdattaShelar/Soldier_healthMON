@@ -3,13 +3,14 @@ const ubidotsConfig = {
     token: 'BBUS-w44nJCaOTdsMA7BQ8ICbzqUJVkge0p', // User's Ubidots Token
     deviceLabel: 'esp32-monitor',              // Matches your ESP32 DEVICE_LABEL
     variables: {
-        hr: 'heart-rate',      // Heart Rate variable label
-        spo2: 'spo2',          // SpO2 variable label
+        hr: 'bpm',             // Updated to match Ubidots label "BPM"
+        spo2: 'spo2',          // Matches Ubidots label "SPO2"
         temp: 'temperature',   // Matches your ESP32 JSON payload
         gas: 'gas',            // Matches your ESP32 JSON payload
         movement: 'motion',    // Actual Ubidots variable label is 'motion'
         lat: 'latitude',       // GPS Latitude variable label
-        lng: 'longitude'       // GPS Longitude variable label
+        lng: 'longitude',      // GPS Longitude variable label
+        accel: 'acceleration'  // New Acceleration variable label
     }
 };
 
@@ -68,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     name: `Active Unit 01`,
                     status: 'normal',
                     lastUpdated: '--:--:--',
-                    vitals: { hr: 0, spo2: 0, temp: '0.0', gas: 'Connecting...', movement: 'Waiting' },
+                    vitals: { hr: 0, spo2: 0, temp: '0.0', gas: 'Connecting...', movement: 'Waiting', accel: 0 },
                     location: { lat: '18.5249', lng: '73.8515' }
                 });
                 continue;
@@ -95,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (warnType === 2) gas = 'Slightly polluted';
             }
 
-            const vitals = { hr, spo2, temp, gas, movement };
+            const vitals = { hr, spo2, temp, gas, movement, accel: (Math.random() * 20).toFixed(2) };
             const status = calculateUnitStatus(vitals);
 
             units.push({
@@ -162,11 +163,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     const tempVal = getVal('temp');
                     const gasVal = getVal('gas');
                     const movementVal = getVal('movement');
+                    const accelVal = getVal('accel');
                     
                     if (hrVal !== null) unit.vitals.hr = Math.round(hrVal);
                     if (spo2Val !== null) unit.vitals.spo2 = Math.round(spo2Val);
                     if (tempVal !== null) unit.vitals.temp = parseFloat(tempVal).toFixed(1);
                     if (gasVal !== null) unit.vitals.gas = gasVal;
+                    if (accelVal !== null) unit.vitals.accel = parseFloat(accelVal).toFixed(2);
                     
                     if (movementVal !== null) {
                         // The core request: 1 -> MOVING, 0 -> STILL
@@ -500,6 +503,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('bar-gas').style.width = `${gasPct}%`;
         document.getElementById('bar-gas').style.background = gasColor;
         document.getElementById('bar-gas').style.boxShadow = `0 0 10px ${gasColor}`;
+
+        // Acceleration
+        if (unit.vitals.accel !== undefined) {
+            document.getElementById('detail-accel').innerText = unit.vitals.accel;
+            let accelPct = Math.min(100, (parseFloat(unit.vitals.accel) / 20) * 100);
+            document.getElementById('bar-accel').style.width = `${accelPct}%`;
+        }
 
         checkForItemLevelAlerts(unit);
     }
